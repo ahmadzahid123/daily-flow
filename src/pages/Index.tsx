@@ -6,7 +6,8 @@ import { TaskInput } from "@/components/TaskInput";
 import { TaskList } from "@/components/TaskList";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { LogOut, Calendar } from "lucide-react";
+import { LogOut, Calendar, Bell } from "lucide-react";
+import { requestNotificationPermission, registerServiceWorker } from "@/lib/notifications";
 
 interface Task {
   id: string;
@@ -21,6 +22,7 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -29,6 +31,7 @@ const Index = () => {
       if (session?.user) {
         setUser(session.user);
         loadTasks(session.user.id);
+        initializeNotifications();
       } else {
         navigate("/auth");
       }
@@ -45,6 +48,38 @@ const Index = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const initializeNotifications = async () => {
+    const permission = await requestNotificationPermission();
+    setNotificationsEnabled(permission);
+    
+    if (permission) {
+      await registerServiceWorker();
+      toast({
+        title: "Notifications enabled!",
+        description: "You'll receive reminders for your tasks.",
+      });
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    const permission = await requestNotificationPermission();
+    setNotificationsEnabled(permission);
+    
+    if (permission) {
+      await registerServiceWorker();
+      toast({
+        title: "Notifications enabled!",
+        description: "You'll receive reminders for your tasks.",
+      });
+    } else {
+      toast({
+        title: "Notifications blocked",
+        description: "Please enable notifications in your browser settings.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const loadTasks = async (userId: string) => {
     const { data, error } = await supabase
@@ -177,14 +212,26 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={handleLogout}
-            className="gap-2"
-          >
-            <LogOut className="h-4 w-4" />
-            Logout
-          </Button>
+          <div className="flex gap-2">
+            {!notificationsEnabled && (
+              <Button 
+                variant="outline" 
+                onClick={handleEnableNotifications}
+                className="gap-2"
+              >
+                <Bell className="h-4 w-4" />
+                Enable Notifications
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              onClick={handleLogout}
+              className="gap-2"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 
