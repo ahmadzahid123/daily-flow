@@ -20,8 +20,13 @@ serve(async (req) => {
 
     console.log("Processing task extraction request:", text);
 
+    const currentDate = new Date().toISOString();
+    const todayDate = new Date().toISOString().split('T')[0];
+
     const systemPrompt = `You are an AI assistant that extracts tasks from natural language input. 
 Extract all tasks and their exact times from the user's input.
+
+IMPORTANT: Today's date is ${todayDate}. The current datetime is ${currentDate}.
 
 Requirements:
 1. Each task must have a "task" name (string).
@@ -29,8 +34,9 @@ Requirements:
 3. If a task has duration, include "duration" in minutes (integer).
 4. Include "notes" if there is extra information (string).
 5. Ignore filler text, extract only valid tasks.
-6. For relative times like "6am today", "tomorrow at 7am", calculate the actual datetime.
-7. Use the current date/time as reference for relative times.`;
+6. When user mentions times without dates (like "6am", "9pm", "noon"), assume they mean TODAY (${todayDate}).
+7. If the time mentioned has already passed today, schedule it for today anyway (user will reschedule if needed).
+8. Use ${currentDate} as the reference point for relative times.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
