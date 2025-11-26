@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { TaskInput } from "@/components/TaskInput";
+import { Input } from "@/components/ui/input";
 import { TaskList } from "@/components/TaskList";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { LogOut, Calendar, Bell } from "lucide-react";
+import { LogOut, Calendar as CalendarIcon, Bell, Plus } from "lucide-react";
 import { requestNotificationPermission, registerServiceWorker } from "@/lib/notifications";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 interface Task {
   id: string;
@@ -23,6 +26,9 @@ const Index = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedTime, setSelectedTime] = useState<string>(format(new Date(), "HH:mm"));
+  const [taskText, setTaskText] = useState<string>("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -48,6 +54,53 @@ const Index = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // Check for due tasks every minute and show notifications
+  useEffect(() => {
+    const checkDueTasks = async () => {
+      if (!user) return;
+      
+      try {
+        // Get recently enhanced tasks (within last 2 minutes)
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+        const { data: enhancedTasks } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('notified', true)
+          .gte('updated_at', twoMinutesAgo)
+          .eq('user_id', user.id);
+
+        // Show browser notifications for enhanced tasks
+        if (enhancedTasks && enhancedTasks.length > 0 && notificationsEnabled) {
+          for (const task of enhancedTasks) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('Task Reminder', {
+                body: task.notes || task.task,
+                icon: '/favicon.ico',
+                tag: task.id
+              });
+            }
+          }
+        }
+
+        // Call enhance-and-notify function
+        await supabase.functions.invoke('enhance-and-notify');
+        
+        // Reload tasks to show updates
+        loadTasks(user.id);
+      } catch (error) {
+        console.error('Error checking due tasks:', error);
+      }
+    };
+
+    // Check immediately on mount
+    checkDueTasks();
+
+    // Then check every minute
+    const interval = setInterval(checkDueTasks, 60000);
+
+    return () => clearInterval(interval);
+  }, [user, notificationsEnabled]);
 
   const initializeNotifications = async () => {
     const permission = await requestNotificationPermission();
@@ -99,49 +152,38 @@ const Index = () => {
     }
   };
 
-  const handleAddTasks = async (text: string) => {
+  const handleAddTask = async () => {
+    if (!user || !taskText.trim()) return;
+    
     setLoading(true);
     try {
-      // Call edge function to process tasks with AI
-      const { data, error } = await supabase.functions.invoke("extract-tasks", {
-        body: { text },
+      const scheduledDateTime = new Date(selectedDate);
+      const [hours, minutes] = selectedTime.split(':');
+      scheduledDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+      const { error: insertError } = await supabase
+        .from('tasks')
+        .insert({
+          user_id: user.id,
+          task: taskText.trim(),
+          scheduled_time: scheduledDateTime.toISOString(),
+          status: 'pending',
+          notified: false
+        });
+
+      if (insertError) throw insertError;
+
+      toast({
+        title: "Task added",
+        description: `Scheduled for ${format(scheduledDateTime, "PPP 'at' p")}`,
       });
 
-      if (error) throw error;
-
-      if (data?.tasks && data.tasks.length > 0) {
-        // Insert tasks into database
-        const tasksToInsert = data.tasks.map((task: any) => ({
-          user_id: user.id,
-          task: task.task,
-          scheduled_time: task.time,
-          duration: task.duration,
-          notes: task.notes,
-          status: "pending",
-        }));
-
-        const { error: insertError } = await supabase
-          .from("tasks")
-          .insert(tasksToInsert);
-
-        if (insertError) throw insertError;
-
-        toast({
-          title: "Tasks added!",
-          description: `Successfully added ${data.tasks.length} tasks.`,
-        });
-
-        loadTasks(user.id);
-      } else {
-        toast({
-          title: "No tasks found",
-          description: "Could not extract tasks from your input. Try being more specific with times.",
-          variant: "destructive",
-        });
-      }
+      setTaskText("");
+      loadTasks(user.id);
     } catch (error: any) {
+      console.error("Error adding task:", error);
       toast({
-        title: "Error",
+        title: "Error adding task",
         description: error.message,
         variant: "destructive",
       });
@@ -204,7 +246,7 @@ const Index = () => {
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <Calendar className="h-8 w-8 text-primary" />
+            <CalendarIcon className="h-8 w-8 text-primary" />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Task Reminder</h1>
               <p className="text-sm text-muted-foreground">
@@ -237,7 +279,64 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="space-y-8">
-          <TaskInput onSubmit={handleAddTasks} isLoading={loading} />
+          <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Add New Task
+            </h2>
+            
+            <div className="space-y-4">
+              <div className="flex gap-4 flex-wrap">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "justify-start text-left font-normal",
+                        !selectedDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => date && setSelectedDate(date)}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Input
+                  type="time"
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                  className="w-32"
+                />
+              </div>
+
+              <Input
+                placeholder="Enter task description..."
+                value={taskText}
+                onChange={(e) => setTaskText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                disabled={loading}
+              />
+
+              <Button 
+                onClick={handleAddTask}
+                disabled={!taskText.trim() || loading}
+                className="w-full"
+              >
+                {loading ? "Adding..." : "Add Task"}
+              </Button>
+            </div>
+          </div>
+
           <TaskList 
             tasks={tasks}
             onMarkDone={handleMarkDone}
