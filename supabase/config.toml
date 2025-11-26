@@ -1,1 +1,10 @@
 project_id = "mhlvtuodkkqpjkxkpywd"
+
+[functions.extract-tasks]
+verify_jwt = false
+
+[functions.enhance-and-notify]
+verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = false
