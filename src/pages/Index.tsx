@@ -7,7 +7,7 @@ import { TaskList } from "@/components/TaskList";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { LogOut, Calendar as CalendarIcon, Bell, Plus } from "lucide-react";
-import { requestNotificationPermission, registerServiceWorker } from "@/lib/notifications";
+import { requestNotificationPermission, registerServiceWorker, subscribeToPushNotifications, testNotification } from "@/lib/notifications";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -103,11 +103,14 @@ const Index = () => {
   }, [user, notificationsEnabled]);
 
   const initializeNotifications = async () => {
+    if (!user) return;
+    
     const permission = await requestNotificationPermission();
     setNotificationsEnabled(permission);
     
     if (permission) {
-      await registerServiceWorker();
+      // Subscribe to push notifications and store subscription
+      await subscribeToPushNotifications(user.id);
       toast({
         title: "Notifications enabled!",
         description: "You'll receive reminders for your tasks.",
@@ -116,11 +119,13 @@ const Index = () => {
   };
 
   const handleEnableNotifications = async () => {
+    if (!user) return;
+    
     const permission = await requestNotificationPermission();
     setNotificationsEnabled(permission);
     
     if (permission) {
-      await registerServiceWorker();
+      await subscribeToPushNotifications(user.id);
       toast({
         title: "Notifications enabled!",
         description: "You'll receive reminders for your tasks.",
@@ -129,6 +134,17 @@ const Index = () => {
       toast({
         title: "Notifications blocked",
         description: "Please enable notifications in your browser settings.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleTestNotification = async () => {
+    const success = await testNotification();
+    if (!success) {
+      toast({
+        title: "Notification test failed",
+        description: "Please enable notifications first.",
         variant: "destructive",
       });
     }
@@ -255,6 +271,17 @@ const Index = () => {
             </div>
           </div>
           <div className="flex gap-2">
+            {notificationsEnabled && (
+              <Button 
+                variant="outline" 
+                onClick={handleTestNotification}
+                className="gap-2"
+                size="sm"
+              >
+                <Bell className="h-4 w-4" />
+                Test
+              </Button>
+            )}
             {!notificationsEnabled && (
               <Button 
                 variant="outline" 
