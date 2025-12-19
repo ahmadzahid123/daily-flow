@@ -1,4 +1,6 @@
 // Notification utility functions
+import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) {
@@ -34,7 +36,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 }
 
-export async function subscribeToPushNotifications(): Promise<PushSubscription | null> {
+export async function subscribeToPushNotifications(userId: string): Promise<PushSubscription | null> {
   const registration = await registerServiceWorker();
   if (!registration) return null;
 
@@ -45,12 +47,36 @@ export async function subscribeToPushNotifications(): Promise<PushSubscription |
   }
 
   try {
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
-    });
+    // Check for existing subscription
+    let subscription = await registration.pushManager.getSubscription();
     
-    console.log('Push subscription:', subscription);
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
+      });
+    }
+    
+    console.log('Push subscription:', JSON.stringify(subscription));
+
+    // Store subscription in database
+    const subscriptionJSON = subscription.toJSON();
+    const insertData = {
+      user_id: userId,
+      endpoint: subscription.endpoint,
+      subscription: subscriptionJSON as Json
+    };
+    
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .insert([insertData]);
+
+    if (error && error.code !== '23505') { // Ignore duplicate key error
+      console.error('Error storing push subscription:', error);
+    } else {
+      console.log('Push subscription stored successfully');
+    }
+
     return subscription;
   } catch (error) {
     console.error('Failed to subscribe to push notifications:', error);
@@ -58,27 +84,42 @@ export async function subscribeToPushNotifications(): Promise<PushSubscription |
   }
 }
 
-export function showInAppNotification(task: string, time: string, onMarkDone?: () => void) {
+export function showLocalNotification(title: string, body: string, tag?: string) {
   if ('Notification' in window && Notification.permission === 'granted') {
-    const notification = new Notification('⏰ Task Reminder', {
-      body: `${task} — ${time}`,
+    const notification = new Notification(title, {
+      body,
       icon: '/favicon.ico',
       badge: '/favicon.ico',
+      tag: tag || 'task-reminder',
       requireInteraction: true
     });
 
     notification.onclick = () => {
       window.focus();
       notification.close();
-      if (onMarkDone) onMarkDone();
     };
+
+    return notification;
   }
+  return null;
+}
+
+export async function testNotification() {
+  const permission = await requestNotificationPermission();
+  if (permission) {
+    showLocalNotification(
+      '🔔 Test Notification',
+      'Notifications are working! You will receive task reminders here.'
+    );
+    return true;
+  }
+  return false;
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
+    .replace(/-/g, '+')
     .replace(/_/g, '/');
 
   const rawData = window.atob(base64);
