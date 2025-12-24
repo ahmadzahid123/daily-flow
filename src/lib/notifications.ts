@@ -40,9 +40,13 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
   const registration = await registerServiceWorker();
   if (!registration) return null;
 
-  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-  if (!vapidPublicKey) {
-    console.error('VAPID public key not configured');
+  const { data: vapidData, error: vapidError } = await supabase.functions.invoke(
+    'vapid-public-key'
+  );
+  const vapidPublicKey = (vapidData as any)?.publicKey as string | undefined;
+
+  if (vapidError || !vapidPublicKey) {
+    console.error('VAPID public key not configured', vapidError);
     return null;
   }
 
