@@ -37,7 +37,7 @@ const Index = () => {
       if (session?.user) {
         setUser(session.user);
         loadTasks(session.user.id);
-        initializeNotifications();
+        initializeNotifications(session.user.id);
       } else {
         navigate("/auth");
       }
@@ -47,6 +47,7 @@ const Index = () => {
       if (session?.user) {
         setUser(session.user);
         loadTasks(session.user.id);
+        initializeNotifications(session.user.id);
       } else {
         navigate("/auth");
       }
@@ -102,15 +103,13 @@ const Index = () => {
     return () => clearInterval(interval);
   }, [user, notificationsEnabled]);
 
-  const initializeNotifications = async () => {
-    if (!user) return;
-    
+  const initializeNotifications = async (userId: string) => {
     const permission = await requestNotificationPermission();
     setNotificationsEnabled(permission);
-    
+
     if (permission) {
-      // Subscribe to push notifications and store subscription
-      await subscribeToPushNotifications(user.id);
+      await registerServiceWorker();
+      await subscribeToPushNotifications(userId);
       toast({
         title: "Notifications enabled!",
         description: "You'll receive reminders for your tasks.",
