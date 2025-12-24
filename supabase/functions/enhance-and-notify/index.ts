@@ -6,21 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Web Push utilities
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
 async function sendWebPush(subscription: any, payload: string, vapidPublicKey: string, vapidPrivateKey: string) {
   try {
-    // Import web-push compatible library for Deno
     const webPush = await import("https://esm.sh/web-push@3.6.7");
     
     webPush.setVapidDetails(
@@ -34,6 +21,62 @@ async function sendWebPush(subscription: any, payload: string, vapidPublicKey: s
     return true;
   } catch (error) {
     console.error("Error sending push notification:", error);
+    return false;
+  }
+}
+
+async function sendEmailNotification(email: string, task: any, enhancedText: string) {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendApiKey) {
+    console.log("RESEND_API_KEY not configured, skipping email notification");
+    return false;
+  }
+
+  try {
+    const taskTime = new Date(task.scheduled_time).toLocaleString();
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #333;">⏰ Task Reminder</h1>
+        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h2 style="color: #555; margin-top: 0;">${task.task}</h2>
+          <p style="color: #666;"><strong>Scheduled:</strong> ${taskTime}</p>
+          ${task.duration ? `<p style="color: #666;"><strong>Duration:</strong> ${task.duration} minutes</p>` : ''}
+        </div>
+        <div style="background: #e8f4fd; padding: 20px; border-radius: 8px; border-left: 4px solid #2196F3;">
+          <h3 style="color: #1976D2; margin-top: 0;">💡 AI-Enhanced Tip</h3>
+          <p style="color: #444;">${enhancedText}</p>
+        </div>
+        <p style="color: #888; font-size: 12px; margin-top: 30px;">
+          This reminder was sent by Task Reminder app.
+        </p>
+      </div>
+    `;
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Task Reminder <onboarding@resend.dev>",
+        to: [email],
+        subject: `⏰ Reminder: ${task.task}`,
+        html: htmlContent,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error("Resend error:", errorData);
+      return false;
+    }
+
+    console.log(`Email notification sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error("Error sending email notification:", error);
     return false;
   }
 }
@@ -116,6 +159,15 @@ Provide an enhanced, motivating version of this task:`;
         const enhancedText = groqData.choices?.[0]?.message?.content || task.task;
 
         console.log(`Enhanced task ${task.id}: ${enhancedText}`);
+
+        // Get user email from auth.users
+        const { data: userData } = await supabase.auth.admin.getUserById(task.user_id);
+        const userEmail = userData?.user?.email;
+
+        // Send email notification (always try this first as fallback)
+        if (userEmail) {
+          await sendEmailNotification(userEmail, task, enhancedText);
+        }
 
         // Get user's push subscriptions
         const { data: subscriptions } = await supabase
