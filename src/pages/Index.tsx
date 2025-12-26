@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { LogOut, Calendar as CalendarIcon, Bell, Plus } from "lucide-react";
 import { requestNotificationPermission, registerServiceWorker, subscribeToPushNotifications, testNotification } from "@/lib/notifications";
-import { playNotificationSound, initAudioContext } from "@/lib/notificationSound";
+import { startNotificationSound, stopNotificationSound, initAudioContext } from "@/lib/notificationSound";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -75,14 +75,15 @@ const Index = () => {
         // Show in-app toast notifications with sound for enhanced tasks
         if (enhancedTasks && enhancedTasks.length > 0) {
           for (const task of enhancedTasks) {
-            // Play notification sound
-            playNotificationSound();
+            // Start looping notification sound
+            startNotificationSound();
             
-            // Show persistent toast notification
+            // Show persistent toast notification with onDismiss to stop sound
             toast({
               title: "⏰ Task Reminder",
               description: task.notes || task.task,
               duration: Infinity, // Persist until dismissed
+              onDismiss: () => stopNotificationSound(),
             });
             
             // Also try browser notification if enabled
@@ -155,14 +156,15 @@ const Index = () => {
     // Initialize audio context on user interaction
     initAudioContext();
     
-    // Play sound
-    playNotificationSound();
+    // Start looping sound
+    startNotificationSound();
     
-    // Show persistent toast
+    // Show persistent toast with onDismiss to stop sound
     toast({
       title: "🔔 Test Notification",
       description: "This notification will stay until you dismiss it!",
       duration: Infinity,
+      onDismiss: () => stopNotificationSound(),
     });
     
     const success = await testNotification();
