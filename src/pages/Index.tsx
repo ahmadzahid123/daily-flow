@@ -12,6 +12,7 @@ import { startNotificationSound, stopNotificationSound, initAudioContext } from 
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { NotificationModal } from "@/components/NotificationModal";
 
 interface Task {
   id: string;
@@ -30,6 +31,13 @@ const Index = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<string>(format(new Date(), "HH:mm"));
   const [taskText, setTaskText] = useState<string>("");
+  const [activeNotification, setActiveNotification] = useState<{
+    isOpen: boolean;
+    title: string;
+    taskName: string;
+    scheduledTime: string;
+    notes?: string;
+  } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -72,17 +80,26 @@ const Index = () => {
           .gte('updated_at', twoMinutesAgo)
           .eq('user_id', user.id);
 
-        // Show in-app toast notifications with sound for enhanced tasks
+        // Show in-app notifications with sound for enhanced tasks
         if (enhancedTasks && enhancedTasks.length > 0) {
           for (const task of enhancedTasks) {
             // Start looping notification sound
             startNotificationSound();
             
-            // Show persistent toast notification with onDismiss to stop sound
+            // Show centered modal notification
+            setActiveNotification({
+              isOpen: true,
+              title: "⏰ Task Reminder",
+              taskName: task.task,
+              scheduledTime: format(new Date(task.scheduled_time), "PPP 'at' p"),
+              notes: task.notes || undefined,
+            });
+            
+            // Also show corner toast for visibility
             toast({
               title: "⏰ Task Reminder",
-              description: task.notes || task.task,
-              duration: Infinity, // Persist until dismissed
+              description: `${task.task} - Check the notification for details`,
+              duration: Infinity,
               onDismiss: () => stopNotificationSound(),
             });
             
@@ -92,7 +109,7 @@ const Index = () => {
                 body: task.notes || task.task,
                 icon: '/favicon.ico',
                 tag: task.id,
-                requireInteraction: true // Keep notification until user interacts
+                requireInteraction: true
               });
             }
           }
@@ -159,10 +176,19 @@ const Index = () => {
     // Start looping sound
     startNotificationSound();
     
-    // Show persistent toast with onDismiss to stop sound
+    // Show centered modal notification
+    setActiveNotification({
+      isOpen: true,
+      title: "🔔 Test Notification",
+      taskName: "Sample Task - Meeting Preparation",
+      scheduledTime: format(new Date(), "PPP 'at' p"),
+      notes: "Review the agenda before the meeting\nPrepare your talking points\nGather any necessary documents\nTest your audio/video if it's a virtual meeting\nArrive 5 minutes early to settle in",
+    });
+    
+    // Also show corner toast
     toast({
       title: "🔔 Test Notification",
-      description: "This notification will stay until you dismiss it!",
+      description: "Check the notification modal for full details!",
       duration: Infinity,
       onDismiss: () => stopNotificationSound(),
     });
@@ -398,6 +424,21 @@ const Index = () => {
           />
         </div>
       </main>
+
+      {/* Notification Modal */}
+      {activeNotification && (
+        <NotificationModal
+          isOpen={activeNotification.isOpen}
+          onClose={() => {
+            setActiveNotification(null);
+            stopNotificationSound();
+          }}
+          title={activeNotification.title}
+          taskName={activeNotification.taskName}
+          scheduledTime={activeNotification.scheduledTime}
+          notes={activeNotification.notes}
+        />
+      )}
     </div>
   );
 };
