@@ -2,8 +2,8 @@ import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
-const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_LIMIT = 5;
+const TOAST_REMOVE_DELAY = Infinity; // Toasts persist until manually dismissed
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -52,9 +52,16 @@ interface State {
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
-const addToRemoveQueue = (toastId: string) => {
+const addToRemoveQueue = (toastId: string, duration?: number) => {
   if (toastTimeouts.has(toastId)) {
     return;
+  }
+
+  // If duration is Infinity or very large, don't auto-remove
+  const removeDelay = duration === Infinity ? TOAST_REMOVE_DELAY : (duration || TOAST_REMOVE_DELAY);
+  
+  if (removeDelay === Infinity) {
+    return; // Don't set timeout for infinite duration
   }
 
   const timeout = setTimeout(() => {
@@ -63,7 +70,7 @@ const addToRemoveQueue = (toastId: string) => {
       type: "REMOVE_TOAST",
       toastId: toastId,
     });
-  }, TOAST_REMOVE_DELAY);
+  }, removeDelay);
 
   toastTimeouts.set(toastId, timeout);
 };

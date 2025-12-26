@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { LogOut, Calendar as CalendarIcon, Bell, Plus } from "lucide-react";
 import { requestNotificationPermission, registerServiceWorker, subscribeToPushNotifications, testNotification } from "@/lib/notifications";
+import { playNotificationSound, initAudioContext } from "@/lib/notificationSound";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -71,14 +72,26 @@ const Index = () => {
           .gte('updated_at', twoMinutesAgo)
           .eq('user_id', user.id);
 
-        // Show browser notifications for enhanced tasks
-        if (enhancedTasks && enhancedTasks.length > 0 && notificationsEnabled) {
+        // Show in-app toast notifications with sound for enhanced tasks
+        if (enhancedTasks && enhancedTasks.length > 0) {
           for (const task of enhancedTasks) {
-            if ('Notification' in window && Notification.permission === 'granted') {
+            // Play notification sound
+            playNotificationSound();
+            
+            // Show persistent toast notification
+            toast({
+              title: "⏰ Task Reminder",
+              description: task.notes || task.task,
+              duration: Infinity, // Persist until dismissed
+            });
+            
+            // Also try browser notification if enabled
+            if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
               new Notification('Task Reminder', {
                 body: task.notes || task.task,
                 icon: '/favicon.ico',
-                tag: task.id
+                tag: task.id,
+                requireInteraction: true // Keep notification until user interacts
               });
             }
           }
@@ -139,11 +152,24 @@ const Index = () => {
   };
 
   const handleTestNotification = async () => {
+    // Initialize audio context on user interaction
+    initAudioContext();
+    
+    // Play sound
+    playNotificationSound();
+    
+    // Show persistent toast
+    toast({
+      title: "🔔 Test Notification",
+      description: "This notification will stay until you dismiss it!",
+      duration: Infinity,
+    });
+    
     const success = await testNotification();
     if (!success) {
       toast({
-        title: "Notification test failed",
-        description: "Please enable notifications first.",
+        title: "Browser notification failed",
+        description: "But you'll still get in-app notifications with sound!",
         variant: "destructive",
       });
     }
